@@ -1,49 +1,54 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { NotasService } from './nota.service';
-import { ObjectLiteral, Repository, UpdateResult } from 'typeorm';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Nota } from './nota.entity';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { Like, Repository } from 'typeorm';
+import { CreateNotaDto } from './dto/create-nota.dto';
+import { UpdateNotaDto } from './dto/update-nota.dto';
 
-const mockNotaRepository = () => ({
-  create: jest.fn(),
-  save: jest.fn(),
-  find: jest.fn(),
-  findOneBy: jest.fn(),
-  update: jest.fn(),
-  delete: jest.fn(),
-});
+@Injectable()
+export class NotasService {
+  constructor(
+    @InjectRepository(Nota)
+    private notasRepository: Repository<Nota>,
+  ) {}
 
-const mockNota = {
-  id: 1,
-  title: 'Test Nota',
-  content: 'Test Content',
-};
+  async findByTitle(title: string): Promise<Nota[]> {
+    const notas = await this.notasRepository.find({
+      where: {
+        title: Like(`%${title}%`), 
+      },
+    });
+    return notas;
+  }
+  async create(createNotaDto: CreateNotaDto): Promise<Nota> {
+    const newNota = this.notasRepository.create(createNotaDto);
+    return this.notasRepository.save(newNota);
+  }
 
-type MockRepository<T extends ObjectLiteral = any> = Partial<
-  Record<keyof Repository<T>, jest.Mock>
->;
+  async findOne(id: number): Promise<Nota> {
+    const nota = await this.notasRepository.findOneBy({ id });
+    if (!nota) {
+      throw new NotFoundException(`Nota con ID ${id} no encontrada`);
+    }
+    return nota;
+  }
 
-describe('NotasService', () => {
-  let service: NotasService;
-  let repository: MockRepository<Nota>;
+  async findAll(): Promise<Nota[]> {
+    return this.notasRepository.find();
+  }
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        NotasService,
-        {
-          provide: getRepositoryToken(Nota),
-          useValue: mockNotaRepository(),
-        },
-      ],
-    }).compile();
+  async update(id: number, updateNotaDto: UpdateNotaDto): Promise<Nota> {
+    const updateResult = await this.notasRepository.update(id, updateNotaDto);
+    if (updateResult.affected === 0) {
+      throw new NotFoundException(`Nota con ID ${id} no encontrada`);
+    }
+    return this.findOne(id);
+  }
 
-    service = module.get<NotasService>(NotasService);
-    repository = module.get<MockRepository<Nota>>(getRepositoryToken(Nota));
-  });
-
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-});
+  async remove(id: number): Promise<void> {
+    const result = await this.notasRepository.delete(id);
+    if (result.affected === 0) {
+      throw new NotFoundException(`Nota con ID ${id} no encontrada`);
+    }
+  }
+}
